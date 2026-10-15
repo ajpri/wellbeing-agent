@@ -46,11 +46,84 @@ Over time you build up a collection of daily entries you can browse, search, and
 ### Prerequisites
 
 - Python 3.12+
-- Node.js 22+
+- Node.js 22.12+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
 - A [Google AI Studio](https://aistudio.google.com/) API key
 
+### Get a Gemini API key
+
+These steps apply to both manual setup and the Linux launcher:
+
+1. Open [Google AI Studio's API Keys page](https://aistudio.google.com/apikey)
+   and sign in with your Google account.
+2. Create an API key for your Google Cloud project, or use the default project
+   provided to new AI Studio users. If your project is missing, import it in
+   AI Studio's Projects page first.
+3. Copy the key. During setup, save it as `GEMINI_API_KEY` in your local `.env`
+   file. The Linux launcher can offer to save it for you through a hidden prompt.
+
+See [Google's API key guide](https://ai.google.dev/gemini-api/docs/api-key) for
+project and permission details. Keep `.env` private; it is ignored by Git.
+Existing exported environment variables take precedence over `.env`. Google's
+client prefers `GOOGLE_API_KEY` if both key names are set.
+
 ### Setup
+
+#### Linux launcher
+
+On Debian or Fedora (including derivatives such as Ubuntu and Pop!_OS), use the
+Linux development launcher from the repository root:
+
+```bash
+./startLinux.sh
+```
+
+It reports missing dependencies and shows the installation plan before asking
+`Install these dependencies now? [y/N]`. System packages use `apt-get` or `dnf`
+with `sudo`; everything else runs as your normal user. Missing uv is installed
+from Astral's official installer, Python 3.12 is managed by uv, and missing or
+incompatible Node.js/npm is installed from the latest official Node.js 22 binary
+with SHA256 verification. Node is stored under
+`~/.local/share/wellbeing-agent/node`; shell profiles and system runtimes are not
+modified. Automatic Node installation supports x86_64 and aarch64 Linux.
+
+If `.env` is missing, the launcher creates it from `.env.example`. Get a key
+using the [shared instructions above](#get-a-gemini-api-key). Once Python
+dependencies are installed, a missing, blank, or placeholder key triggers setup
+instructions and an offer to save your key using a hidden terminal prompt. Only
+`GEMINI_API_KEY` is updated; other settings and comments are preserved. The file
+is restricted to read/write access for your user. Existing usable keys are kept.
+Validation does not make a Gemini request or verify access/quota. `DATABASE_URL`
+is optional because sessions currently use in-memory storage. An invalid key
+overriding `.env` must be corrected or unset before setup can continue.
+`--yes` accepts dependency installation only; key entry still needs an interactive
+terminal and separate consent. Noninteractive runs must supply a key beforehand.
+
+The launcher requires `PORT=8000` and `JOURNAL_DIR=./journals` (or their defaults)
+because the frontend currently uses those locations. Ports 8000 and 5173 must
+be free; it does not stop existing applications. It installs locked project
+dependencies, starts both servers, waits for each to respond, and prints
+<http://localhost:5173>. Logs appear in the terminal. Keep the terminal open;
+Ctrl+C stops both servers and their children. If either server exits, the other
+is stopped too. Each server has a 60-second readiness timeout. This starts the
+existing development backend, which listens on all network interfaces.
+
+```bash
+./startLinux.sh --check  # Read-only: tools, .env, project environment and ports
+./startLinux.sh --yes    # Accept dependency installation without prompting
+./startLinux.sh --help
+```
+
+`--check` never installs dependencies, creates `.env`, or starts servers. It
+requires a previously installed project Python environment for dotenv validation.
+Noninteractive runs report missing dependencies and exit unless `--yes` is
+specified. Normal runs sync Python dependencies with `uv sync --locked` and use
+`npm ci --legacy-peer-deps` when the frontend lockfile changes or dependencies
+are missing. Installation failures stop startup and can be retried.
+
+#### Manual setup
+
+Follow these steps after [getting your API key](#get-a-gemini-api-key).
 
 ```bash
 # Clone the repo
