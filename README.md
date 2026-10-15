@@ -50,6 +50,19 @@ Over time you build up a collection of daily entries you can browse, search, and
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
 - A [Google AI Studio](https://aistudio.google.com/) API key
 
+Cartoon generation requires paid Gemini API access with billing enabled on the
+project associated with your API key; Google's image models currently have no
+free API tier. See [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing)
+and [billing setup](https://ai.google.dev/gemini-api/docs/billing). Chat and image
+generation have separate model access and quota requirements, so a working chat
+does not guarantee that cartoons can be generated.
+
+Journal text is saved before attempting a cartoon. If image generation fails
+(for example, because of access restrictions, quota limits, or a service outage),
+the journal remains saved and the chat explains that the cartoon could not be
+generated. A permission error can have multiple causes; check the project's
+permissions and billing rather than assuming it is always a billing issue.
+
 ### Setup
 
 ```bash

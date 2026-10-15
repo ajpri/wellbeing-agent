@@ -1,8 +1,12 @@
+import logging
 import os
 import re
 from datetime import datetime
 from pathlib import Path
 
+from google.genai.errors import APIError
+
+logger = logging.getLogger(__name__)
 _index_cache: dict | None = None
 
 
@@ -100,18 +104,32 @@ def _get_journal_dir() -> Path:
     return journal_dir
 
 
+def _cartoon_failure_message(error: Exception) -> str:
+    """Give useful guidance without exposing API response bodies or credentials."""
+    if isinstance(error, APIError):
+        if error.code == 403:
+            return "Google denied access to image generation. Check your API project's permissions and billing in Google AI Studio."
+        if error.code == 401:
+            return "Google could not authenticate the image request. Check your API key."
+        if error.code == 429:
+            return "Google reported an image generation quota or rate limit. Check your project's quota and billing before trying again later."
+        if error.code == 404:
+            return "The configured image model was not found or is unavailable to your project."
+        if error.code and error.code >= 500:
+            return "Google's image service is temporarily unavailable."
+    return "Image generation failed. You can continue journaling without a cartoon."
+
+
 def save_journal(entry: str, title: str = "") -> str:
-    """Save a wellbeing journal entry for today and generate a cartoon.
+    """Save a wellbeing journal entry, then attempt an optional cartoon.
 
     Args:
         entry: The formatted markdown journal entry to save.
         title: A short summary of the day's highlights for the cartoon image.
 
     Returns:
-        Confirmation message with the file path.
+        Confirmation with the file path and any cartoon failure explanation.
     """
-    from .image_gen import generate_day_cartoon
-
     now = datetime.now()
     journal_dir = _get_journal_dir()
     date_str = now.strftime("%Y-%m-%d")
@@ -123,19 +141,37 @@ def save_journal(entry: str, title: str = "") -> str:
         file_path = journal_dir / f"{date_str}-{counter}.md"
         counter += 1
 
-    # Generate cartoon and append to entry if title provided
-    if title:
-        cartoon_result = generate_day_cartoon(title)
-        if "![" in cartoon_result:
-            # Extract the markdown image line from the result
-            img_line = [l for l in cartoon_result.splitlines() if l.startswith("![")][0]
-            entry = f"{entry}\n\n---\n{img_line}\n"
-
-    with open(file_path, "w") as f:
+    # Persist the journal before making any optional external API request.
+    with open(file_path, "w", encoding="utf-8") as f:
         f.write(entry)
-
     invalidate_index()
-    return f"Journal entry saved to {file_path}"
+    confirmation = f"Journal entry saved to {file_path}"
+    if not title:
+        return confirmation
+
+    try:
+        from .image_gen import generate_day_cartoon
+
+        cartoon_result = generate_day_cartoon(title)
+        img_line = next((line.strip() for line in cartoon_result.splitlines()
+                         if line.strip().startswith("![")), None)
+    except Exception as error:
+        # The optional image must not undo a successful save. Avoid logging raw
+        # exceptions because provider responses can include sensitive data.
+        logger.warning("Cartoon generation failed (%s); journal text was saved.", type(error).__name__)
+        return f"{confirmation}. Cartoon not generated: {_cartoon_failure_message(error)}"
+
+    if not img_line:
+        return f"{confirmation}. Cartoon not generated: Google returned no usable image."
+
+    try:
+        with open(file_path, "a", encoding="utf-8") as f:
+            f.write(f"\n\n---\n{img_line}\n")
+    except OSError:
+        logger.warning("Could not attach cartoon; journal text was saved.")
+        return f"{confirmation}. The cartoon could not be attached to the entry. Check local file permissions and available disk space."
+    invalidate_index()
+    return confirmation
 
 
 def read_journal(date: str = "") -> str:
